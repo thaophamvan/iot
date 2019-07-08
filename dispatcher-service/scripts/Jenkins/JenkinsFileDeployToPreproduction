@@ -1,0 +1,104 @@
+@Library('jenkins-library@0.0.1') _
+
+pipeline {
+	agent {
+		label 'docker'
+	}
+
+	options {
+		buildDiscarder(logRotator(numToKeepStr: '5', artifactNumToKeepStr: '5'))
+		timeout(time: 15, unit: 'MINUTES')
+		timestamps()
+		disableConcurrentBuilds()
+	}
+
+	environment {
+
+		DEPLOYMENT_ENVIRONMENT = "preproduction"
+	
+		IBM_DOCKER_REGISTRY_CREDENTIALS = credentials('ibm-docker-registry')
+		IBM_DOCKER_REGISTRY_URL = "uk.icr.io"
+		IBM_DOCKER_REGISTRY_NAMESPACE = "emea-mobile-${DEPLOYMENT_ENVIRONMENT}"
+
+		BUILD_DISPLAY_NAME = sh(script: "date -u +'%Y%m%d_%H%M%S'", returnStdout: true).trim()
+	}
+
+	stages {
+
+		stage('Check out') {
+			steps {
+				script {
+					currentBuild.displayName = "${env.BUILD_DISPLAY_NAME}"
+				}
+
+				checkout scm
+			}
+		}
+		
+		stage('Build/test') {
+			steps {
+
+				sh '''
+					SERVICE_NAME=$(cat Scripts/Config/${DEPLOYMENT_ENVIRONMENT}.properties | grep service_name | sed 's/.*service_name=//')
+					docker build -f ./Scripts/Docker/Dockerfile -t $SERVICE_NAME .
+				'''
+			}
+		}
+
+		stage('Push Image to IBM Cloud registry') {
+			steps {
+
+				sh '''
+					docker login -u token -p $IBM_DOCKER_REGISTRY_CREDENTIALS $IBM_DOCKER_REGISTRY_URL
+					
+					SERVICE_NAME=$(cat Scripts/Config/${DEPLOYMENT_ENVIRONMENT}.properties | grep service_name | sed 's/.*service_name=//')
+					RELEASE_VERSION=$(cat Scripts/Config/${DEPLOYMENT_ENVIRONMENT}.properties | grep release_version | sed 's/.*release_version=//')
+					BUILD_VERSION=$(git rev-parse --short HEAD)
+
+					dockerCloudImage=$IBM_DOCKER_REGISTRY_URL/$IBM_DOCKER_REGISTRY_NAMESPACE/$SERVICE_NAME:$RELEASE_VERSION$BUILD_VERSION
+					docker tag $SERVICE_NAME $dockerCloudImage
+					docker push $dockerCloudImage
+
+					docker rmi $dockerCloudImage
+				'''
+			}
+		}
+
+		stage('Deploy to IBM Cloud') {
+			steps {
+
+				script {
+					withCredentials([file(credentialsId: "kube-config-emea-mobile-${DEPLOYMENT_ENVIRONMENT}", variable: 'KUBECONFIG')]) {
+
+						sh '''
+							chmod +w $KUBECONFIG
+
+							SERVICE_NAME=$(cat Scripts/Config/${DEPLOYMENT_ENVIRONMENT}.properties | grep service_name | sed 's/.*service_name=//')
+							RELEASE_VERSION=$(cat Scripts/Config/${DEPLOYMENT_ENVIRONMENT}.properties | grep release_version | sed 's/.*release_version=//')
+							ENVIRONMENT=$(cat Scripts/Config/${DEPLOYMENT_ENVIRONMENT}.properties | grep environment | sed 's/.*environment=//')
+							NUMBER_OF_INSTANCES=$(cat Scripts/Config/${DEPLOYMENT_ENVIRONMENT}.properties | grep number_of_instances | sed 's/.*number_of_instances=//')
+							BUILD_VERSION=$(git rev-parse --short HEAD)
+
+							cloudImage=$IBM_DOCKER_REGISTRY_URL/$IBM_DOCKER_REGISTRY_NAMESPACE/$SERVICE_NAME:$RELEASE_VERSION$BUILD_VERSION
+							sed "s|DOCKER_CLOUD_IMAGE_NAME|$cloudImage|g; s|SERVICE_NAME|$SERVICE_NAME|g; s|ENVIRONMENT|$ENVIRONMENT|g; s|NUMBER_OF_INSTANCES|$NUMBER_OF_INSTANCES|g" Scripts/Kubernetes/configmap.${DEPLOYMENT_ENVIRONMENT}.template | kubectl apply -f -
+							sed "s|DOCKER_CLOUD_IMAGE_NAME|$cloudImage|g; s|SERVICE_NAME|$SERVICE_NAME|g; s|ENVIRONMENT|$ENVIRONMENT|g; s|NUMBER_OF_INSTANCES|$NUMBER_OF_INSTANCES|g" Scripts/Kubernetes/service.template | kubectl apply -f -
+							sed "s|DOCKER_CLOUD_IMAGE_NAME|$cloudImage|g; s|SERVICE_NAME|$SERVICE_NAME|g; s|ENVIRONMENT|$ENVIRONMENT|g; s|NUMBER_OF_INSTANCES|$NUMBER_OF_INSTANCES|g" Scripts/Kubernetes/deployment.template | kubectl apply -f -
+						'''
+					}
+				}
+			}
+		}
+	}
+
+	post {
+		always {
+			deleteDir()
+			sh '''
+				docker rmi $(docker images --quiet --filter "dangling=true")
+				docker images
+			'''
+
+			notifySlack(currentBuild, "#emeajenkins")
+		}
+	}
+}

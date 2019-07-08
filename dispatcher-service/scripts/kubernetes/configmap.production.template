@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: SERVICE_NAME-ENVIRONMENT
+data:
+ ECP_NOTIFICATION_SERVICE_API_URL: https://api.emea.ecp.electrolux.com/notification/api/v1/
+ ECP_NOTIFICATION_SERVICE_API_WEB_HOOK_API: https://emea-production.api.electrolux.net/eventSubscriptionManagementService/api/v1/notifications?client_id=3ce874ce-774f-4e35-98d2-1f9ed2b04f3f
+ NOTIFICATION_ORCHESTRATOR_SERVICE_API_URL: http://notification-orchestrator-service-production.default.svc.cluster.local/notificationOrchestratorService/api/v1/
+ ECP_NOTIFICATION_SERVICE_API_USE_CERTIFICATE: 'true'
+ DELETE_DATA_HISTORY_SCHEDULER_NAME: deleteDataHistory
+ DELETE_DATA_HISTORY_SCHEDULER_HOURS: '22'
+ DELETE_DATA_HISTORY_OLDER_THAN_NUMBER_OF_DAYS: '7'
+ DATABASE_CONNECTION_URL: 'jdbc:postgresql://sl-eu-gb-p00.dblayer.com:16934/esmsDB'

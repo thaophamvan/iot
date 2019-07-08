@@ -1,0 +1,52 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: SERVICE_NAME-ENVIRONMENT
+spec:
+  replicas: NUMBER_OF_INSTANCES
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: SERVICE_NAME
+      env: ENVIRONMENT
+      app_version: v1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  minReadySeconds: 5
+  template:
+    metadata:
+      labels:
+        app: SERVICE_NAME
+        env: ENVIRONMENT
+        app_version: v1
+    spec:
+      containers:
+      - name: service
+        image: DOCKER_CLOUD_IMAGE_NAME
+        ports:
+        - name: http
+          containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: SERVICE_NAME-ENVIRONMENT
+        - secretRef:
+            name: SERVICE_NAME-ENVIRONMENT
+        livenessProbe:
+          httpGet:
+            path: /eventSubscriptionManagementService/api/v1/ping
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 3
+          timeoutSeconds: 1
+        readinessProbe:
+          httpGet:
+            path: /eventSubscriptionManagementService/api/v1/ping
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 3
+          timeoutSeconds: 1

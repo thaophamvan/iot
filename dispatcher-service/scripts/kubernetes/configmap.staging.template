@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: SERVICE_NAME-ENVIRONMENT
+data:
+ ECP_NOTIFICATION_SERVICE_API_URL: https://api.eu.apiconnect.ibmcloud.com/electrolux-europe-staging-emea/notification/api/v1/
+ ECP_NOTIFICATION_SERVICE_API_WEB_HOOK_API: https://api.eu.apiconnect.ibmcloud.com/mobile-backend-org-appbackendprod/it-emea-staging/eventSubscriptionManagementService/api/v1/notifications?client_id=1f39ab4c-5d75-4e8b-9ced-8827b5d23dbe
+ NOTIFICATION_ORCHESTRATOR_SERVICE_API_URL: http://notification-orchestrator-service-staging.default.svc.cluster.local/notificationOrchestratorService/api/v1/
+ ECP_NOTIFICATION_SERVICE_API_USE_CERTIFICATE: 'false'
+ DELETE_DATA_HISTORY_SCHEDULER_NAME: deleteDataHistory
+ DELETE_DATA_HISTORY_SCHEDULER_HOURS: '22'
+ DELETE_DATA_HISTORY_OLDER_THAN_NUMBER_OF_DAYS: '7'
+ DATABASE_CONNECTION_URL: 'jdbc:postgresql://sl-eu-lon-2-portal.10.dblayer.com:26851/esmsDB'

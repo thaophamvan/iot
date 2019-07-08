@@ -1,0 +1,102 @@
+@Library('jenkins-library@0.0.1') _
+
+pipeline {
+	agent {
+		label 'docker'
+	}
+
+	options {
+		buildDiscarder(logRotator(numToKeepStr: '5', artifactNumToKeepStr: '5'))
+		timeout(time: 5, unit: 'MINUTES')
+		timestamps()
+		disableConcurrentBuilds()
+	}
+
+	triggers {
+		bitbucketPush()
+	}
+
+	environment {
+        BUILD_VERSION = sh(script: "date -u +'%Y%m%d_%H%M%S'", returnStdout: true).trim()
+		SONARQUBE_CREDENTIALS  	= credentials('sonarqube_credentials')
+		SONARQUBE_SERVER		= "https://sonarqube.edp.electrolux.io"
+	}
+
+	stages {
+		stage('Preparation') {
+			steps {
+				script {
+                    currentBuild.displayName = "${env.BUILD_VERSION}"
+                }
+
+				sh '''
+					docker pull maven:3.5.2-jdk-8
+				'''
+			}
+		}
+
+		stage('Check out') {
+			steps {
+				checkout scm
+			}
+		}
+
+		stage('Build') {
+			steps {
+				sh '''
+					docker run --rm -i \
+						-u $(id -u $USER):$(id -g $USER) \
+						-v ~/.m2:/var/maven/.m2 \
+                        -e MAVEN_CONFIG=/var/maven/.m2 \
+						-v /home/jenkins:/home/jenkins \
+						-v $(pwd):/$(basename $PWD) \
+						-w /$(basename $PWD) \
+						maven:3.5.2-jdk-8 mvn clean compile
+				'''
+			}
+		}
+
+		stage('Run unit tests') {
+			steps {
+				sh '''
+					docker run --rm -i \
+						-u $(id -u $USER):$(id -g $USER) \
+                        -v ~/.m2:/var/maven/.m2 \
+                        -e MAVEN_CONFIG=/var/maven/.m2 \
+                        -v /home/jenkins:/home/jenkins \
+                        -v $(pwd):/$(basename $PWD) \
+                        -w /$(basename $PWD) \
+						maven:3.5.2-jdk-8 mvn clean test
+				'''
+            }
+        }
+
+		stage('SonarQube analysis') {
+			steps {
+				script {
+					timeout(time: 1, unit: 'HOURS') {
+						withSonarQubeEnv('SonarQube') {
+							sh '''
+								docker run --rm -i \
+									-u $(id -u $USER):$(id -g $USER) \
+                                    -v ~/.m2:/var/maven/.m2 \
+                                    -e MAVEN_CONFIG=/var/maven/.m2 \
+                                    -v /home/jenkins:/home/jenkins \
+                                    -v $(pwd):/$(basename $PWD) \
+                                    -w /$(basename $PWD) \
+									maven:3.5.2-jdk-8 mvn -X test sonar:sonar -D sonar.host.url=${SONARQUBE_SERVER} -D sonar.login=$SONARQUBE_CREDENTIALS
+							'''
+						}
+					}
+				}
+			}
+		}
+	}
+
+	post {
+		always {
+			deleteDir()
+			notifySlack(currentBuild, "#emeajenkins")
+		}
+	}
+}

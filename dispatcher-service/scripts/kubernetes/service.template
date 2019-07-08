@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: SERVICE_NAME-ENVIRONMENT
+spec:
+  ports:
+   - protocol: TCP
+     port: 80
+     targetPort: 8080
+  selector:
+    app: SERVICE_NAME
+    env: ENVIRONMENT
+    app_version: v1
